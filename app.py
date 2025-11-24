@@ -12,7 +12,7 @@ st.title("📷 Real-Time YOLO Detection with Collect / Ignore")
 # ---------------------------
 # Load YOLO Model
 # ---------------------------
-model = YOLO("best.pt")   # <-- your trained model
+model = YOLO("best.pt")   # <-- your trained model path
 
 # ---------------------------
 # Session State Initialization
@@ -31,7 +31,7 @@ if "det_frames" not in st.session_state:
 # ---------------------------
 # YOLO Video Processor
 # ---------------------------
-TARGET_CLASSES = ["mobile-phone"]  # your model classes
+TARGET_CLASSES = ["book", "bag", "notebook"]  # your model classes
 CONF_THRESHOLD = 0.6  # minimum confidence
 STABLE_FRAMES = 5     # frames before pausing
 
@@ -82,9 +82,16 @@ class YOLOProcessor(VideoProcessorBase):
 # ---------------------------
 webrtc_streamer(
     key="yolo-live",
-    mode=WebRtcMode.SENDRECV,  # ✅ correct
+    mode=WebRtcMode.SENDRECV,  # ✅ correct enum
     video_processor_factory=YOLOProcessor,
-    media_stream_constraints={"video": True, "audio": False},
+    media_stream_constraints={
+        "video": {
+            "width": {"ideal": 1280},
+            "height": {"ideal": 720},
+            "facingMode": {"exact": "environment"}  # back camera
+        },
+        "audio": False
+    },
 )
 
 # ---------------------------
@@ -101,10 +108,9 @@ if st.session_state.pause and st.session_state.detected_item:
         st.session_state.collected_count += 1
         st.session_state.pause = False
         st.session_state.detected_item = None
+        st.experimental_refresh()  # refresh UI
 
     if col2.button("Ignore"):
         st.session_state.pause = False
         st.session_state.detected_item = None
-
-
-
+        st.experimental_refresh()  # refresh UI
