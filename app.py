@@ -1,448 +1,365 @@
-# import streamlit as st
-# import av
-# from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-# import cv2
-# import threading
+"""
+Streamlit Pre-Exam Proctoring App
+Single-file Streamlit app that:
+- Runs a YOLO model (Ultralytics) on webcam/video stream
+- When prohibited items are detected, uses an LLM (user-configurable) to produce an instruction
+- Uses gTTS (or pyttsx3 locally) to speak the instruction
+- Provides UI buttons: Ignore, Collected, Examination Completed
 
+USAGE
+- Put your trained YOLO weights (best.pt) path in MODEL_PATH
+- Ensure that your YOLO model meets mAP > 0.85 on validation as requested
+- Set environment variables or edit config for LLM usage (GOOGLE_API_KEY or other)
+- Run: streamlit run streamlit_proctoring.py
 
-# # ------------------ Session State ------------------
-# if "recording" not in st.session_state:
-#     st.session_state.recording = False
+LIMITATIONS / NOTES
+- Browser autoplay of audio is often blocked. This app includes two TTS modes:
+  1) SERVER_TTS (gTTS + st.audio) which embeds audio in the page (may require manual play)
+  2) LOCAL_TTS (pyttsx3) which speaks on the machine running the Streamlit server (works if app runs locally)
+- Replace LLM placeholder code with your preferred LLM client (Google Gen AI SDK, OpenAI, etc.).
 
-# if "streaming" not in st.session_state:
-#     st.session_state.streaming = False
-# if "video_writer" not in st.session_state:
-#     st.session_state.video_writer = None
+Dependencies (pip)
+ultralytics
+streamlit
+opencv-python
+numpy
+gTTS
+pyttsx3 (optional, local TTS)
+Pillow
 
-# # ------------------ Start/Stop Functions ------------------
-# def start_recording():
-#     st.session_state.recording = True
-#     st.session_state.streaming = True
-    
-#     st.success("Recording started!")
+"""
 
-# def stop_recording():
-#     st.session_state.recording = False
-#     if st.session_state.video_writer is not None:
-#         st.session_state.video_writer.release()
-#         st.session_state.video_writer = None
-#     st.success("Recording stopped!")
-
-# # Set page configuration
-# st.set_page_config(page_title="Three Pane Layout", layout="wide")
-
-# # Title
-# st.title("Detection Application")
-
-# # Create three columns (panes)
-# col1, col2, col3 = st.columns(3)
-
-# # Pane 1 content
-# with col1:
-#     st.header("Control")
-#     st.button("Start Recording", on_click=start_recording)
-#     st.button("Stop Recording", on_click=stop_recording)
-
-# # Pane 2 content
-# with col2:
-#     class VideoProcessor(VideoProcessorBase):
-#         def __init__(self):
-#             self.frame_shape = None
-
-#         def recv(self, frame):
-#             img = frame.to_ndarray(format="bgr24")
-
-#             # Only save frames if recording is True
-#             if st.session_state.recording:
-#                 if st.session_state.video_writer is None:
-#                     self.frame_shape = img.shape
-#                     fourcc = cv2.VideoWriter_fourcc(*"XVID")
-#                     st.session_state.video_writer = cv2.VideoWriter(
-#                         "output.avi", fourcc, 20.0, (self.frame_shape[1], self.frame_shape[0])
-#                     )
-#                 st.session_state.video_writer.write(img)
-
-#             return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-#     # Only launch webcam if streaming is True
-
-#     st.set_page_config(page_title="Webcam Stream Demo", layout="wide")
-#     st.header("Webcam Stream")
-#     if st.session_state.streaming:
-#         webrtc_streamer(
-#             key="webcam",
-#             video_processor_factory=VideoProcessor,
-#             media_stream_constraints={"video": True, "audio": False},
-#             async_processing=True,
-#         )
-#     else:
-#         st.info("Click 'Start Recording' to open webcam")
-   
-# # Pane 3 content
-# with col3:
-#     st.header("Statistics")
-#     if st.session_state.recording:
-#         st.info("Recording: ON")
-#     else:
-# #         st.info("Recording: OFF")
-# import streamlit as st
-# from ultralytics import YOLO
-# import cv2
-# import time
-# import numpy as np
-# from PIL import Image
-
-# # ------------------------- CONFIG --------------------------
-# MODEL_PATH = "best.pt"  # <-- your YOLOv11 model path
-# TARGET_CLASSES = ["mobile-phone"]
-# # ------------------------------------------------------------
-
-# # Initialize model
-# @st.cache_resource
-# def load_model():
-#     return YOLO(MODEL_PATH)
-
-# model = load_model()
-
-# # Page configuration
-# st.set_page_config(
-#     page_title="YOLOv11 Detection App",
-#     page_icon="📱",
-#     layout="wide",
-#     initial_sidebar_state="expanded"
-# )
-
-# # Initialize session state variables
-# def initialize_session_state():
-#     if 'is_recording' not in st.session_state:
-#         st.session_state.is_recording = False
-#     if 'pause_detection' not in st.session_state:
-#         st.session_state.pause_detection = False
-#     if 'paused_frame' not in st.session_state:
-#         st.session_state.paused_frame = None
-#     if 'timer_running' not in st.session_state:
-#         st.session_state.timer_running = False
-#     if 'timer_start_time' not in st.session_state:
-#         st.session_state.timer_start_time = 0
-#     if 'countdown_value' not in st.session_state:
-#         st.session_state.countdown_value = 5
-#     if 'collected_items' not in st.session_state:
-#         st.session_state.collected_items = {}
-#     if 'detected_class' not in st.session_state:
-#         st.session_state.detected_class = ""
-#     if 'cap' not in st.session_state:
-#         st.session_state.cap = None
-#     if 'last_frame' not in st.session_state:
-#         st.session_state.last_frame = None
-#     if 'video_placeholder_key' not in st.session_state:
-#         st.session_state.video_placeholder_key = 0
-
-# initialize_session_state()
-
-# # ------------------ STREAMLIT UI SETUP -------------------
-
-# # Sidebar (Left Pane equivalent)
-# with st.sidebar:
-#     st.title("🎯 Detection Controls")
-    
-#     st.subheader("Recording Controls")
-#     col1, col2 = st.columns(2)
-#     with col1:
-#         if st.button("🎥 Start Recording", use_container_width=True, type="primary"):
-#             st.session_state.is_recording = True
-#             st.session_state.cap = cv2.VideoCapture(0)
-#             # Set camera properties for better performance
-#             st.session_state.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-#             st.session_state.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-#             st.session_state.cap.set(cv2.CAP_PROP_FPS, 30)
-#     with col2:
-#         if st.button("⏹️ Stop Recording", use_container_width=True, type="secondary"):
-#             st.session_state.is_recording = False
-#             if st.session_state.cap:
-#                 st.session_state.cap.release()
-#                 st.session_state.cap = None
-    
-#     st.divider()
-    
-#     st.subheader("📊 Collected Items")
-#     if st.session_state.collected_items:
-#         for item, count in st.session_state.collected_items.items():
-#             st.write(f"**{item}** : {count}")
-#     else:
-#         st.write("No items collected yet")
-    
-#     # Clear items button
-#     if st.button("🗑️ Clear All Items", use_container_width=True):
-#         st.session_state.collected_items = {}
-
-# # Main content area
-# st.title("📱 YOLOv11 Object Detection")
-# st.markdown("---")
-
-# # Create a stable container for video
-# video_container = st.container()
-
-# with video_container:
-#     # Use a unique key for the video placeholder to prevent recreation
-#     video_placeholder = st.empty()
-    
-#     # Display the last frame if available
-#     if st.session_state.last_frame is not None:
-#         video_placeholder.image(st.session_state.last_frame, use_column_width=True, channels="BGR")
-
-# # Collect/Ignore buttons in a separate container
-# button_container = st.container()
-# with button_container:
-#     if st.session_state.pause_detection:
-#         st.warning(f"📱 **{st.session_state.detected_class} detected!** Choose an action:")
-#         col1, col2 = st.columns(2)
-#         with col1:
-#             if st.button("✅ Collect", key="collect_btn", use_container_width=True, type="primary"):
-#                 # Collect item logic
-#                 cls_name = st.session_state.detected_class
-#                 if cls_name not in st.session_state.collected_items:
-#                     st.session_state.collected_items[cls_name] = 1
-#                 else:
-#                     st.session_state.collected_items[cls_name] += 1
-                
-#                 st.session_state.pause_detection = False
-#                 st.session_state.timer_running = False
-#                 st.success(f"✅ {cls_name} collected!")
-#         with col2:
-#             if st.button("❌ Ignore", key="ignore_btn", use_container_width=True, type="secondary"):
-#                 # Ignore item logic
-#                 st.session_state.pause_detection = False
-#                 st.session_state.timer_running = False
-#                 st.info("⏭️ Detection continued")
-
-# # Status indicator - use columns for stable layout
-# status_container = st.container()
-# with status_container:
-#     status_col1, status_col2, status_col3 = st.columns(3)
-#     with status_col1:
-#         status = "🔴 Recording" if st.session_state.is_recording else "⏸️ Stopped"
-#         st.metric("Status", status)
-#     with status_col2:
-#         detection_status = "⏸️ Paused" if st.session_state.pause_detection else "🔍 Detecting"
-#         st.metric("Detection", detection_status)
-#     with status_col3:
-#         if st.session_state.pause_detection:
-#             st.metric("Countdown", f"{st.session_state.countdown_value}s")
-#         else:
-#             st.metric("Countdown", "0s")
-
-# # ------------------ TIMER HANDLING -------------------------
-# def start_timer():
-#     st.session_state.timer_running = True
-#     st.session_state.timer_start_time = time.time()
-#     st.session_state.countdown_value = 5
-
-# def update_countdown():
-#     if st.session_state.timer_running:
-#         elapsed = time.time() - st.session_state.timer_start_time
-#         st.session_state.countdown_value = max(0, 5 - int(elapsed))
-        
-#         if st.session_state.countdown_value <= 0:
-#             st.session_state.timer_running = False
-#             st.session_state.pause_detection = False
-
-# # ------------------ VIDEO PROCESSING -----------------------
-# def process_video_frame():
-#     if not st.session_state.is_recording or st.session_state.cap is None:
-#         return
-    
-#     # Update countdown if timer is running
-#     if st.session_state.timer_running:
-#         update_countdown()
-    
-#     # Read frame from camera
-#     ret, frame = st.session_state.cap.read()
-#     if not ret:
-#         st.error("❌ Failed to read from camera")
-#         st.session_state.is_recording = False
-#         return
-    
-#     # Store the frame for persistent display
-#     display_frame = frame.copy()
-    
-#     # Process frame based on detection state
-#     if st.session_state.pause_detection:
-#         # Use paused frame and overlay countdown
-#         if st.session_state.paused_frame is not None:
-#             display_frame = st.session_state.paused_frame.copy()
-#             # Draw countdown on frame
-#             cv2.putText(display_frame, f"Wait: {st.session_state.countdown_value}s", 
-#                        (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
-#             cv2.putText(display_frame, f"Detected: {st.session_state.detected_class}", 
-#                        (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-#     else:
-#         # Run YOLO detection
-#         results = model(frame, stream=True)
-#         detection_made = False
-        
-#         for r in results:
-#             for box in r.boxes:
-#                 cls = int(box.cls[0])
-#                 cls_name = model.names[cls]
-                
-#                 if cls_name in TARGET_CLASSES:
-#                     # Draw bounding box
-#                     x1, y1, x2, y2 = map(int, box.xyxy[0])
-#                     conf = float(box.conf[0])
-                    
-#                     cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-#                     cv2.putText(display_frame, f"{cls_name} {conf:.2f}", 
-#                                (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                    
-#                     # Pause detection if target class found
-#                     if not st.session_state.pause_detection:
-#                         st.session_state.pause_detection = True
-#                         st.session_state.paused_frame = frame.copy()
-#                         st.session_state.detected_class = cls_name
-#                         start_timer()
-#                         detection_made = True
-#                         break
-            
-#             if detection_made:
-#                 break
-    
-#     # Update the video placeholder
-#     video_placeholder.image(display_frame, use_column_width=True, channels="BGR")
-    
-#     # Store the last frame to prevent blinking
-#     st.session_state.last_frame = display_frame
-
-# # ------------------ MAIN APPLICATION LOGIC -----------------
-# # Process video frames if recording
-# if st.session_state.is_recording:
-#     process_video_frame()
-    
-#     # Use Streamlit's automatic rerun with a delay
-#     time.sleep(0.03)  # ~30 FPS
-#     st.rerun()
-# else:
-#     # Show placeholder when not recording
-#     if st.session_state.last_frame is None:
-#         video_placeholder.info("👆 Click **Start Recording** to begin detection")
-
-# # Cleanup when app stops
-# if not st.session_state.is_recording and st.session_state.cap:
-#     st.session_state.cap.release()
-#     st.session_state.cap = None
-
-# # Instructions
-# with st.expander("ℹ️ How to use this app"):
-#     st.markdown("""
-#     1. Click **Start Recording** to begin webcam detection
-#     2. The app will detect objects using YOLOv11
-#     3. When a target object is detected, detection will pause
-#     4. Choose **Collect** to count the item or **Ignore** to continue
-#     5. Collected items appear in the sidebar
-#     6. Click **Stop Recording** to end the session
-#     """)
-
-# st.markdown("---")
-# st.caption("YOLOv11 Object Detection App | Built with Streamlit")
-
+import os
+import time
+import io
+import tempfile
+from typing import List, Dict, Any
 
 import streamlit as st
-from ultralytics import YOLO
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 import cv2
-import av
-import time
+import numpy as np
+from PIL import Image
 
-# ------------------ CONFIG ------------------
-MODEL_PATH = "best.pt"  # your trained YOLO model
-TARGET_CLASSES = ["mobile-phone"]  # example classes
+# YOLO model
+try:
+    from ultralytics import YOLO
+except Exception:
+    YOLO = None
 
-# ------------------ LOAD MODEL ------------------
+# TTS
+try:
+    from gtts import gTTS
+except Exception:
+    gTTS = None
+
+try:
+    import pyttsx3
+except Exception:
+    pyttsx3 = None
+
+# ----------------------
+# CONFIG / USER EDIT
+# ----------------------
+MODEL_PATH = os.getenv("YOLO_MODEL_PATH", "best.pt")  # path to trained weights
+CONF_THRESH = float(os.getenv("CONF_THRESH", "0.85"))  # detection confidence threshold
+IOU_THRESH = float(os.getenv("IOU_THRESH", "0.75"))
+
+# Which classes are considered prohibited
+PROHIBITED_CLASSES = [
+    "mobile-phone"
+]
+
+# TTS mode: 'server' uses gTTS + embedded audio, 'local' uses pyttsx3 (speaks on server)
+TTS_MODE = os.getenv("TTS_MODE", "server")
+
+# LLM config placeholder
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "google_genai")  # or 'openai'
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")  # if using Google Gen AI
+
+# ----------------------
+# Helper functions
+# ----------------------
+
+def load_model(path: str):
+    if YOLO is None:
+        raise RuntimeError("ultralytics not installed. `pip install ultralytics` to use YOLO inference.")
+    if not os.path.exists(path):
+        st.warning(f"Model weights not found at {path}. Please provide a valid path.")
+        return None
+    model = YOLO(path)
+    return model
+
+
 @st.cache_resource
-def load_model():
-    return YOLO(MODEL_PATH)
+def init_tts_engine():
+    if pyttsx3 is None:
+        return None
+    engine = pyttsx3.init()
+    return engine
 
-model = load_model()
 
-# ------------------ SESSION STATE ------------------
-if "collected_items" not in st.session_state:
-    st.session_state.collected_items = {}
+def speak_text_local(text: str):
+    engine = init_tts_engine()
+    if engine is None:
+        st.error("pyttsx3 not available. Install pyttsx3 for local TTS (pip install pyttsx3)")
+        return
+    engine.say(text)
+    engine.runAndWait()
 
-if "pause_detection" not in st.session_state:
-    st.session_state.pause_detection = False
 
-if "detected_class" not in st.session_state:
-    st.session_state.detected_class = None
+def synthesize_gtts_audio(text: str) -> bytes:
+    """Return mp3 audio bytes using gTTS"""
+    if gTTS is None:
+        raise RuntimeError("gTTS not installed. `pip install gTTS` to enable server-side TTS.")
+    tts = gTTS(text=text, lang="en")
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    fp.seek(0)
+    return fp.read()
 
-if "timer_start" not in st.session_state:
-    st.session_state.timer_start = 0
 
-if "countdown" not in st.session_state:
-    st.session_state.countdown = 5
+# Placeholder LLM wrapper. Replace internals with real API calls (Google GenAI, OpenAI, etc.)
+def generate_instruction(detected_class: str) -> str:
+    """Generate a short instruction string given the detected class.
+    This function contains a simple local template fallback if LLM credentials are not provided.
+    Replace the body with an actual LLM call (Google GenAI or other) if desired.
+    """
+    # If user provided Google API key, you would call the Google Gen AI SDK here.
+    # Example (pseudocode):
+    # from google.generativeai import client
+    # client = GoogleClient(api_key=GOOGLE_API_KEY)
+    # resp = client.generate_text(...)
 
-# ------------------ VIDEO PROCESSOR ------------------
-class YOLOProcessor(VideoProcessorBase):
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
+    # Fallback deterministic templates (safe, no external calls)
+    templates = {
+        "Mobile-phone": "Prohibited: 'Mobile' is not allowed. Please remove it from the room immediately.",
+        "backpack": "Prohibited: 'Backpack' is not allowed during the exam. Please remove it from the room.",
+        "Calculator": "Prohibited: 'Calculator' is not allowed. Place it outside the exam area now.",
+        "book": "Prohibited: 'Book' is not allowed during the exam. Please remove it from the desk.",
+        "Notebook": "Prohibited: 'Notebook' is not allowed. Please remove it now.",
+        "paper": "Prohibited: 'Notes/Paper' detected. Please clear the desk.",
+        "smart watches - v1": "Prohibited: 'Smartwatch' is not allowed. Please remove it now.",
+    }
+    return templates.get(detected_class, f"Prohibited: '{detected_class}' is not allowed.")
 
-        # Run YOLO detection every frame
-        results = model(img)[0]
-        for box in results.boxes:
-            cls_id = int(box.cls[0])
-            cls_name = model.names[cls_id]
-            if cls_name in TARGET_CLASSES:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(img, f"{cls_name}", (x1, y1-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-                # Update detected class for sidebar
-                st.session_state.detected_class = cls_name
+# Utility to parse ultralytics results to a list of detections
+def parse_results(results) -> List[Dict[str, Any]]:
+    dets = []
+    # results is a list (per frame) of Results objects
+    for r in results:
+        boxes = r.boxes
+        if boxes is None:
+            continue
+        for box in boxes:
+            cls = int(box.cls.cpu().numpy()[0]) if hasattr(box, "cls") else int(box.cls)
+            conf = float(box.conf.cpu().numpy()[0]) if hasattr(box, "conf") else float(box.conf)
+            xyxy = box.xyxy.cpu().numpy()[0] if hasattr(box, "xyxy") else box.xyxy
+            dets.append({
+                "class_id": cls,
+                "conf": conf,
+                "xyxy": xyxy.tolist() if hasattr(xyxy, "tolist") else list(xyxy),
+            })
+    return dets
 
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-# ------------------ WEBRTC STREAM ------------------
-webrtc_streamer(
-    key="yolo-live",
-    mode=WebRtcMode.SENDRECV,
-    video_processor_factory=YOLOProcessor,
-    media_stream_constraints={
-        "video": {"facingMode": {"exact": "user"}},
-        "audio": False
-    },
-)
 
-# ------------------ SIDEBAR ------------------
-st.sidebar.title("🎯 Controls")
+# ----------------------
+# Streamlit UI / App
+# ----------------------
 
-# Collected items
-st.sidebar.subheader("📊 Collected Items")
-if st.session_state.collected_items:
-    for k, v in st.session_state.collected_items.items():
-        st.sidebar.write(f"**{k}** : {v}")
-else:
-    st.sidebar.write("No items collected yet")
+st.set_page_config(page_title="Pre-Exam Proctoring", layout="wide")
+st.title("Pre-Exam Proctoring — Live Detection of Prohibited Items")
 
-# Collect / Ignore buttons
-if st.session_state.pause_detection and st.session_state.detected_class:
-    st.sidebar.warning(f"Detected: {st.session_state.detected_class}")
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("✅ Collect", key="collect_btn"):
-            cls_name = st.session_state.detected_class
-            if cls_name not in st.session_state.collected_items:
-                st.session_state.collected_items[cls_name] = 1
+# Sidebar controls
+with st.sidebar:
+    st.header("Settings")
+    model_path = st.text_input("YOLO model path", MODEL_PATH)
+    conf = st.slider("Confidence threshold", 0.0, 1.0, float(CONF_THRESH), 0.01)
+    tts_mode = st.radio("TTS mode (audio playback)", ["server", "local"], index=0 if TTS_MODE == "server" else 1)
+    start_camera = st.button("Start Camera")
+    stop_camera = st.button("Stop Camera")
+    st.markdown("---")
+    st.caption("LLM integration: set GOOGLE_API_KEY as env var to enable Google Gen AI calls in generate_instruction().")
+
+# Session state for detections
+if "collected" not in st.session_state:
+    st.session_state.collected = []  # list of dicts {class, time, conf}
+if "ignored" not in st.session_state:
+    st.session_state.ignored = []
+if "pending" not in st.session_state:
+    st.session_state.pending = None
+if "camera_running" not in st.session_state:
+    st.session_state.camera_running = False
+
+# Load model button
+if st.button("Load Model"):
+    st.info(f"Loading model from {model_path} ...")
+    model = load_model(model_path)
+    if model is not None:
+        st.success("Model loaded. Make sure your model has mAP > 0.85 on validation for production.")
+        st.session_state.model = model
+
+# Main columns
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("Camera Feed")
+    FRAME_WINDOW = st.image([])
+
+with col2:
+    st.subheader("Detections")
+    st.write("Pending detection:")
+    pending_box = st.empty()
+    st.write("Collected items:")
+    collected_box = st.empty()
+
+# Buttons for pending detection actions
+ignore_btn = st.button("Ignore")
+collect_btn = st.button("Collected")
+exam_done_btn = st.button("Examination Completed")
+
+# Start / stop camera logic
+if start_camera:
+    st.session_state.camera_running = True
+if stop_camera:
+    st.session_state.camera_running = False
+
+# OpenCV video capture (webcam)
+cap = None
+if st.session_state.camera_running:
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        st.error("Cannot open webcam. Make sure a webcam is connected and accessible.")
+        st.session_state.camera_running = False
+
+# Main loop (pull frames and run inference)
+if st.session_state.camera_running and hasattr(st.session_state, "model"):
+    model = st.session_state.model
+    try:
+        while st.session_state.camera_running:
+            ret, frame = cap.read()
+            if not ret:
+                st.warning("Failed to read frame from camera")
+                break
+
+            # Resize for speed (maintain aspect ratio) - model will re-scale internally
+            h, w = frame.shape[:2]
+            max_dim = 1280
+            if max(h, w) > max_dim:
+                scale = max_dim / max(h, w)
+                frame = cv2.resize(frame, (int(w * scale), int(h * scale)))
+
+            # Convert BGR->RGB
+            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Run inference
+            results = model.track(source=img, conf=conf, persist=False) if hasattr(model, "track") else model(img, conf=conf)
+
+            # Parse detections
+            detections = []
+            # ultralytics returns a Results object or list; we handle common cases
+            try:
+                for r in results:
+                    if r.boxes is None:
+                        continue
+                    for b in r.boxes:
+                        cls_id = int(b.cls.cpu().numpy()[0]) if hasattr(b, "cls") else int(b.cls)
+                        conf_v = float(b.conf.cpu().numpy()[0]) if hasattr(b, "conf") else float(b.conf)
+                        xyxy = b.xyxy.cpu().numpy()[0] if hasattr(b, "xyxy") else b.xyxy
+                        label = model.names[cls_id] if hasattr(model, "names") else str(cls_id)
+                        detections.append({"class": label, "conf": conf_v, "xyxy": xyxy.tolist()})
+            except Exception:
+                # fallback: try simpler parse
+                try:
+                    for r in results:
+                        for d in r:
+                            detections.append(d)
+                except Exception:
+                    pass
+
+            # Draw boxes on frame for visualization
+            vis = img.copy()
+            for d in detections:
+                x1, y1, x2, y2 = map(int, d["xyxy"][:4])
+                cv2.rectangle(vis, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                cv2.putText(vis, f"{d['class']} {d['conf']:.2f}", (x1, max(y1 - 6, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+
+            FRAME_WINDOW.image(vis)
+
+            # Check for prohibited items
+            found = None
+            for d in detections:
+                if d["class"] in PROHIBITED_CLASSES and d["conf"] >= conf:
+                    found = d
+                    break
+
+            if found is not None:
+                # If new pending or different from previous
+                prev = st.session_state.get("pending")
+                if (prev is None) or (prev and prev.get("class") != found["class"]):
+                    st.session_state.pending = {"class": found["class"], "conf": found["conf"], "time": time.time()}
+                    # Generate instruction via LLM or template
+                    instruction = generate_instruction(found["class"])
+                    st.session_state.pending["instruction"] = instruction
+
+                    # TTS
+                    if tts_mode == "local" and pyttsx3 is not None:
+                        speak_text_local(instruction)
+                    else:
+                        # Generate mp3 and show audio player (note: autoplay may be blocked by browser)
+                        try:
+                            audio_bytes = synthesize_gtts_audio(instruction)
+                            st.audio(audio_bytes, format="audio/mp3")
+                        except Exception as e:
+                            st.warning("TTS failed: " + str(e))
+
+                pending_box.json(st.session_state.pending)
             else:
-                st.session_state.collected_items[cls_name] += 1
-            st.session_state.pause_detection = False
-            st.session_state.detected_class = None
-            st.success(f"{cls_name} collected!")
-    with col2:
-        if st.button("❌ Ignore", key="ignore_btn"):
-            st.session_state.pause_detection = False
-            st.session_state.detected_class = None
-            st.info("Ignored, continuing detection")
+                pending_box.write("No prohibited items detected.")
+                st.session_state.pending = None
 
-# Clear all items
-if st.sidebar.button("🗑️ Clear Items"):
-    st.session_state.collected_items = {}
+            # Handle button presses
+            if ignore_btn and st.session_state.pending:
+                st.session_state.ignored.append(st.session_state.pending)
+                st.session_state.pending = None
+                ignore_btn = False
+
+            if collect_btn and st.session_state.pending:
+                st.session_state.collected.append(st.session_state.pending)
+                st.session_state.pending = None
+                collect_btn = False
+
+            # Show collected items
+            if len(st.session_state.collected) > 0:
+                collected_box.json(st.session_state.collected)
+            else:
+                collected_box.write("No items collected yet.")
+
+            if exam_done_btn:
+                # Show final report
+                st.success("Examination completed. Final collected items returned below.")
+                st.json(st.session_state.collected)
+                # reset
+                st.session_state.camera_running = False
+                break
+
+            # small sleep to yield
+            time.sleep(0.05)
+
+    finally:
+        if cap is not None:
+            cap.release()
+
+else:
+    if not hasattr(st.session_state, "model"):
+        st.info("Load a YOLO model and start the camera to begin live proctoring.")
+    else:
+        st.info("Camera is not running. Click 'Start Camera' in the sidebar.")
 
 
+# Footer: quick tips
+st.markdown("---")
+st.write("**Tips:** Ensure your model is trained with `imgsz` large enough for small objects (e.g., 960 or 1024). For best results, label tightly and include many hard examples.")
+
+
+# End of file
