@@ -1,7 +1,10 @@
 streamlit
+streamlit-webrtc
 opencv-python
+opencv-python-headless
 pillow
 numpy
 ultralytics
 av
+
 pandas
