@@ -91,7 +91,7 @@ webrtc_streamer(
     mode=WebRtcMode.SENDRECV,
     video_processor_factory=YOLOProcessor,
     media_stream_constraints={
-        "video": {"facingMode": {"exact": "environment"}},
+        "video": {"facingMode": {"exact": "user"}},
         "audio": False
     },
 )
@@ -126,3 +126,4 @@ if st.session_state.pause and st.session_state.detected_item:
     if col2.button("Ignore"):
         st.session_state.pause = False
         st.session_state.detected_item = None
+
