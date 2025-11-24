@@ -108,10 +108,11 @@ if st.session_state.pause and st.session_state.detected_item:
         st.session_state.collected_count += 1
         st.session_state.pause = False
         st.session_state.detected_item = None
-        st.experimental_refresh()  # refresh UI
+        st.experimental_rerun()  # refresh UI
 
     if col2.button("Ignore"):
         st.session_state.pause = False
         st.session_state.detected_item = None
-        st.experimental_refresh()  # refresh UI
+        st.experimental_rerun()  # refresh UI
+
 
