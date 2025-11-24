@@ -82,7 +82,7 @@ class YOLOProcessor(VideoProcessorBase):
 # ---------------------------
 webrtc_streamer(
     key="yolo-live",
-    mode="sendrecv",
+    mode=WebRtcMode.SENDRECV,  # ✅ correct
     video_processor_factory=YOLOProcessor,
     media_stream_constraints={"video": True, "audio": False},
 )
@@ -105,5 +105,6 @@ if st.session_state.pause and st.session_state.detected_item:
     if col2.button("Ignore"):
         st.session_state.pause = False
         st.session_state.detected_item = None
+
 
 
