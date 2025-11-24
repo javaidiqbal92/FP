@@ -88,7 +88,7 @@ webrtc_streamer(
         "video": {
             "width": {"ideal": 1280},
             "height": {"ideal": 720},
-            "facingMode": {"exact": "environment"}  # back camera
+            "facingMode": {"exact": "user"}  # back camera
         },
         "audio": False
     },
@@ -114,3 +114,4 @@ if st.session_state.pause and st.session_state.detected_item:
         st.session_state.pause = False
         st.session_state.detected_item = None
         st.experimental_refresh()  # refresh UI
+
