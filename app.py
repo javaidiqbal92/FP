@@ -31,7 +31,7 @@ if "det_frames" not in st.session_state:
 # ---------------------------
 # YOLO Video Processor
 # ---------------------------
-TARGET_CLASSES = ["book", "bag", "notebook"]  # your model classes
+TARGET_CLASSES = ["mobile-phone"]  # your model classes
 CONF_THRESHOLD = 0.6  # minimum confidence
 STABLE_FRAMES = 5     # frames before pausing
 
@@ -112,3 +112,4 @@ if st.session_state.pause and st.session_state.detected_item:
     if col2.button("Ignore"):
         st.session_state.pause = False
         st.session_state.detected_item = None
+
