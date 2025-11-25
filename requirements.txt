@@ -1,11 +1,10 @@
 streamlit
-streamlit-webrtc==0.45.0
 ultralytics
 opencv-python-headless
-av
-numpy
 pandas
+streamlit-webrtc
 gtts
-streamlit_autorefresh 
-time
-base64
+streamlit-autorefresh
+Pillow
+numpy
+
