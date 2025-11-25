@@ -146,11 +146,11 @@ with left:
         # create the stream if streaming flag is True
         webrtc_ctx = webrtc_streamer(
             key="stream",
-            rtc_configuration=RTC_CONFIGURATION,
             mode=WebRtcMode.SENDRECV,
             video_transformer_factory=VideoProcessor,
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True,
+            rtc_configuration=RTC_CONFIGURATION
         )
     else:
         st.info("Stream stopped. Click 'Start Stream' to resume scanning.")
@@ -290,5 +290,6 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
