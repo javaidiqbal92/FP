@@ -1,365 +1,631 @@
-"""
-Streamlit Pre-Exam Proctoring App
-Single-file Streamlit app that:
-- Runs a YOLO model (Ultralytics) on webcam/video stream
-- When prohibited items are detected, uses an LLM (user-configurable) to produce an instruction
-- Uses gTTS (or pyttsx3 locally) to speak the instruction
-- Provides UI buttons: Ignore, Collected, Examination Completed
+# import streamlit as st
+# from ultralytics import YOLO
+# import cv2
+# import pandas as pd
+# from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 
-USAGE
-- Put your trained YOLO weights (best.pt) path in MODEL_PATH
-- Ensure that your YOLO model meets mAP > 0.85 on validation as requested
-- Set environment variables or edit config for LLM usage (GOOGLE_API_KEY or other)
-- Run: streamlit run streamlit_proctoring.py
+# from gtts import gTTS             # Text-to-speech
+# import io                         # In-memory audio buffer
+# from streamlit_autorefresh import st_autorefresh  # 🔁 auto refresh
+# import time                       # ⏱ for 5-second repeat logic
+# import base64                     # for embedding audio in HTML
 
-LIMITATIONS / NOTES
-- Browser autoplay of audio is often blocked. This app includes two TTS modes:
-  1) SERVER_TTS (gTTS + st.audio) which embeds audio in the page (may require manual play)
-  2) LOCAL_TTS (pyttsx3) which speaks on the machine running the Streamlit server (works if app runs locally)
-- Replace LLM placeholder code with your preferred LLM client (Google Gen AI SDK, OpenAI, etc.).
 
-Dependencies (pip)
-ultralytics
-streamlit
-opencv-python
-numpy
-gTTS
-pyttsx3 (optional, local TTS)
-Pillow
+# # --------------------------------------------
+# # STREAMLIT CONFIG
+# # --------------------------------------------
+# st.set_page_config(page_title="Exam Proctoring", layout="wide")
+# st.title("📝Cheating Material Detection Model")
 
-"""
+# # 🔁 Auto-rerun every 5000 ms so detections + panels keep updating
+# st_autorefresh(interval=5000, key="yolo-refresh")
 
-import os
-import time
-import io
-import tempfile
-from typing import List, Dict, Any
 
+# # --------------------------------------------
+# # CLASS LABELS (prohibited items)
+# # --------------------------------------------
+# CLASS_MAP = {
+#     0: "mobile-phone",
+#     1: "calculator",
+#     2: "Bag",
+#     3: "Smart Watch",
+#     4: "Notebook",
+#     5: "Book",
+#     6: "Notes",
+# }
+# HELPING_SET = set(CLASS_MAP.values())   # all are prohibited
+
+
+# # --------------------------------------------
+# # SIMPLE INSTRUCTION TEXT
+# # --------------------------------------------
+# def generate_llm_instructions(dets):
+#     """
+#     Build a simple sentence like:
+#     'Phone is prohibited. Please collect it.'
+#     or
+#     'Phone and Bag are prohibited. Please collect them.'
+#     """
+#     if not dets:
+#         return None
+
+#     names = sorted({d["Class Name"] for d in dets if d["Class Name"] in HELPING_SET})
+#     if not names:
+#         return None
+
+#     if len(names) == 1:
+#         text = f"{names[0]} is prohibited. Please collect it."
+#     else:
+#         if len(names) == 2:
+#             items = f"{names[0]} and {names[1]}"
+#         else:
+#             items = ", ".join(names[:-1]) + f" and {names[-1]}"
+#         text = f"{items} are prohibited. Please collect them."
+
+#     return text
+
+
+# # --------------------------------------------
+# # LOAD YOLO MODEL
+# # --------------------------------------------
+# @st.cache_resource
+# def load_model(path):
+#     return YOLO(path)
+
+# model = load_model("best11.pt")
+
+
+# def yolo_on_frame(bgr):
+    
+#     """
+#     Run YOLO on a frame and return:
+#       - annotated frame
+#       - list of detections with Class ID, Class Name, Confidence, x1..y2
+#     """
+#     h, w, _ = bgr.shape
+
+#     new_w = 480
+#     scale = new_w / w
+#     new_h = int(h * scale)
+
+#     small = cv2.resize(bgr, (new_w, new_h))
+#     results = model.predict(small, conf=0.75, iou=0.45, verbose=False)
+#     res = results[0]
+
+#     ann_small = res.plot()
+#     annotated = cv2.resize(ann_small, (w, h))
+
+#     dets = []
+#     for box in res.boxes:
+#         cid = int(box.cls[0])
+#         conf_val = float(box.conf[0])
+#         x1, y1, x2, y2 = box.xyxy[0].tolist()
+
+#         x1 /= scale
+#         y1 /= scale
+#         x2 /= scale
+#         y2 /= scale
+
+#         # class name from model, then mapped to our friendly name if present
+#         model_name = model.names[int(cid)] if hasattr(model, "names") else str(cid)
+#         friendly_name = CLASS_MAP.get(cid, model_name)
+
+#         dets.append({
+#             "Class ID": cid,
+#             "Class Name": friendly_name,
+#             "Confidence": round(conf_val, 3),
+#             "x1": x1, "y1": y1,
+#             "x2": x2, "y2": y2
+#         })
+
+#     return annotated, dets
+
+
+# # --------------------------------------------
+# # SESSION STATE
+# # --------------------------------------------
+# if "current" not in st.session_state:
+#     st.session_state.current = []
+
+# if "counts" not in st.session_state:
+#     st.session_state.counts = {name: 0 for name in CLASS_MAP.values()}
+
+# # last instruction text + timing
+# if "last_instruction_text" not in st.session_state:
+#     st.session_state.last_instruction_text = None
+
+# if "last_alert_time" not in st.session_state:
+#     st.session_state.last_alert_time = 0.0
+
+# # whether next detection is allowed to set a NEW instruction
+# if "ready_for_new_instruction" not in st.session_state:
+#     st.session_state.ready_for_new_instruction = True
+
+# # store latest audio HTML (hidden auto-play)
+# if "audio_html" not in st.session_state:
+#     st.session_state.audio_html = ""
+
+# # store summary DataFrame
+# if "summary_df" not in st.session_state:
+#     st.session_state.summary_df = None
+
+
+
+
+# # --------------------------------------------
+# # VIDEO PROCESSOR
+# # --------------------------------------------
+# class VideoProcessor(VideoTransformerBase):
+    
+#     def __init__(self):
+#         self.last = None
+#         self.latest = []
+#         self.frame_id = 0
+
+#     def recv(self, frame):
+#         img = frame.to_ndarray(format="bgr24")
+#         self.frame_id += 1
+
+#         if self.frame_id % 5 == 0 or self.last is None:
+#             annotated, dets = yolo_on_frame(img)
+#             self.last = annotated
+#             self.latest = dets
+
+#         return frame.from_ndarray(self.last, format="bgr24")
+
+
+# # --------------------------------------------
+# # LAYOUT
+# # --------------------------------------------
+# left, right = st.columns([2, 1])
+
+# with left:
+#     st.subheader("📸 Live Stream")
+#     webrtc_ctx = webrtc_streamer(
+#         key="stream",
+#         mode=WebRtcMode.SENDRECV,
+#         video_transformer_factory=VideoProcessor,
+#         media_stream_constraints={"video": True, "audio": False},
+#         async_processing=True,
+        
+#     )
+
+# with right:
+#     c1, c2 = st.columns(2)
+#     with c1:
+#         btn_collect = st.button("Collected", use_container_width=True)
+#     with c2:
+#         btn_ignore = st.button("Ignore", use_container_width=True)
+
+#     btn_complete = st.button("Complete Scan", use_container_width=True)
+
+#     st.subheader("📊 Current Detections")
+#     box_dets = st.empty()
+
+#     st.subheader("🧠 LLM Instructions")
+#     box_llm = st.empty()
+
+#     box_audio = st.empty()  # hidden autoplay audio
+
+#     st.subheader("📈 Summary")
+#     box_sum = st.empty()
+
+#     msg = st.empty()
+
+#     # Initialize session state
+#     if "btn_disabled" not in st.session_state:
+#         st.session_state.btn_disabled = False
+    
+#     btn_clear= st.button("Clear Summary",disabled=st.session_state.btn_disabled)
+#     if btn_clear:
+#         st.session_state.summary_df= None
+#         st.session_state.btn_disabled = True
+
+# # --------------------------------------------
+# # UPDATE CURRENT DETECTIONS FROM VIDEO
+# # --------------------------------------------
+# if webrtc_ctx and webrtc_ctx.state.playing and webrtc_ctx.video_transformer:
+#     latest = webrtc_ctx.video_transformer.latest
+#     # ✅ Only update when YOLO gives something; keeps last stable otherwise
+#     if latest is not None and len(latest) > 0:
+#         st.session_state.current = latest
+
+# dets = st.session_state.current
+
+
+# # --------------------------------------------
+# # CLEAR PANELS FUNCTION
+# # --------------------------------------------
+# def clear_panels():
+#     # We do NOT clear last_instruction_text or summary_df
+#     box_dets.empty()
+#     box_audio.empty()
+#     st.session_state.audio_html = ""
+#     st.session_state.last_alert_time = 0.0
+#     st.session_state.current = []
+#     # Allow next detection to set a new instruction, but keep showing the old one
+#     st.session_state.ready_for_new_instruction = True
+    
+
+
+# # --------------------------------------------
+# # HANDLE BUTTONS (AND CLEAR PANELS)
+# # --------------------------------------------
+# skip_detection = False
+
+# if btn_ignore:
+#     clear_panels()
+#     skip_detection = True
+#     msg.info("Frame Ignored.")
+
+# if btn_collect:
+#     if not dets:
+#         msg.warning("Nothing to collect.")
+#     else:
+#         for d in dets:
+#             if d["Class Name"] in HELPING_SET:
+#                 st.session_state.counts[d["Class Name"]] += 1
+#         clear_panels()
+#         skip_detection = True
+#         msg.success("Collected.")
+
+# if btn_complete:
+#     # Build summary from counts and store in session_state
+#     df = pd.DataFrame(
+#         [{"Object": k, "Count": v} for k, v in st.session_state.counts.items()]
+#     )
+#     st.session_state.summary_df = df
+    
+#     clear_panels()
+#     skip_detection = True
+#     msg.success("Scan Completed.")
+
+    
+
+
+# # --------------------------------------------
+# # SHOW CURRENT DETECTIONS TABLE
+# # --------------------------------------------
+# if not skip_detection:
+#     if dets:
+#         box_dets.dataframe(pd.DataFrame(dets), use_container_width=True)
+#     else:
+#         box_dets.info("No objects detected.")
+
+
+# # --------------------------------------------
+# # AUTO DETECTION MESSAGE + VOICE
+# #   - LLM Instructions:
+# #       set only once per "cycle" (until a button is clicked)
+# #   - Audio repeats every 5s while prohibited items exist
+# # --------------------------------------------
+# if not skip_detection and dets:
+#     helping_dets = [d for d in dets if d["Class Name"] in HELPING_SET]
+
+#     if helping_dets:
+#         # Only set instruction text when we are "ready" for a new one
+#         if st.session_state.ready_for_new_instruction:
+#             instruction_text = generate_llm_instructions(helping_dets)
+#             if instruction_text:
+#                 st.session_state.last_instruction_text = instruction_text
+#                 st.session_state.ready_for_new_instruction = False
+
+#         # Audio: repeat every 5 seconds while prohibited items are detected
+#         now = time.time()
+#         need_new_tts = (now - st.session_state.last_alert_time) >= 5
+
+#         if need_new_tts and st.session_state.last_instruction_text:
+#             st.session_state.last_alert_time = now
+
+#             try:
+#                 # generate TTS using the stored instruction
+#                 tts = gTTS(text=st.session_state.last_instruction_text, lang="en")
+#                 audio_bytes = io.BytesIO()
+#                 tts.write_to_fp(audio_bytes)
+#                 audio_bytes.seek(0)
+#                 audio_data = audio_bytes.read()
+
+#                 # encode as base64 and create hidden autoplay audio
+#                 b64 = base64.b64encode(audio_data).decode()
+#                 audio_html = f"""
+#                 <audio autoplay style="display:none;">
+#                     <source src="data:audio/mp3;base64,{b64}" type="audio/mpeg">
+#                 </audio>
+#                 """
+#                 st.session_state.audio_html = audio_html
+#             except Exception as e:
+#                 msg.error(f"TTS Error: {e}")
+
+
+# # --------------------------------------------
+# # RENDER LLM INSTRUCTIONS + AUDIO
+# # --------------------------------------------
+# if st.session_state.last_instruction_text:
+#     # ✅ This stays the same every rerun until a NEW detection cycle overwrites it
+#     box_llm.markdown(st.session_state.last_instruction_text)
+
+# if st.session_state.audio_html:
+#     # hidden autoplay audio – no visible player
+#     box_audio.markdown(st.session_state.audio_html, unsafe_allow_html=True)
+
+
+# # --------------------------------------------
+# # RENDER SUMMARY (PERSISTENT AFTER COMPLETE SCAN)
+# # --------------------------------------------
+# if st.session_state.summary_df is not None:
+#     box_sum.table(st.session_state.summary_df)
+    
 import streamlit as st
+from ultralytics import YOLO
 import cv2
-import numpy as np
-from PIL import Image
+import pandas as pd
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+from gtts import gTTS
+import io
+from streamlit_autorefresh import st_autorefresh
+import time
+import base64
 
-# YOLO model
-try:
-    from ultralytics import YOLO
-except Exception:
-    YOLO = None
+st.set_page_config(page_title="Exam Proctoring", layout="wide")
+st.title("📝Cheating Material Detection Model")
+st_autorefresh(interval=5000, key="yolo-refresh")
 
-# TTS
-try:
-    from gtts import gTTS
-except Exception:
-    gTTS = None
+CLASS_MAP = {
+    0: "Bag",
+    1: "book",
+    2: "mobile",
+    3: "Smart Watch",
+    4: "paper",
+    5: "Notebook",
+    6: "Calculator",
 
-try:
-    import pyttsx3
-except Exception:
-    pyttsx3 = None
+}
+HELPING_SET = set(CLASS_MAP.values())
 
-# ----------------------
-# CONFIG / USER EDIT
-# ----------------------
-MODEL_PATH = os.getenv("YOLO_MODEL_PATH", "best.pt")  # path to trained weights
-CONF_THRESH = float(os.getenv("CONF_THRESH", "0.85"))  # detection confidence threshold
-IOU_THRESH = float(os.getenv("IOU_THRESH", "0.75"))
-
-# Which classes are considered prohibited
-PROHIBITED_CLASSES = [
-    "mobile-phone"
-]
-
-# TTS mode: 'server' uses gTTS + embedded audio, 'local' uses pyttsx3 (speaks on server)
-TTS_MODE = os.getenv("TTS_MODE", "server")
-
-# LLM config placeholder
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "google_genai")  # or 'openai'
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")  # if using Google Gen AI
-
-# ----------------------
-# Helper functions
-# ----------------------
-
-def load_model(path: str):
-    if YOLO is None:
-        raise RuntimeError("ultralytics not installed. `pip install ultralytics` to use YOLO inference.")
-    if not os.path.exists(path):
-        st.warning(f"Model weights not found at {path}. Please provide a valid path.")
+def generate_llm_instructions(dets):
+    if not dets:
         return None
-    model = YOLO(path)
-    return model
-
+    names = sorted({d["Class Name"] for d in dets if d["Class Name"] in HELPING_SET})
+    if not names:
+        return None
+    if len(names) == 1:
+        text = f"{names[0]} is prohibited. Please collect it."
+    else:
+        if len(names) == 2:
+            items = f"{names[0]} and {names[1]}"
+        else:
+            items = ", ".join(names[:-1]) + f" and {names[-1]}"
+        text = f"{items} are prohibited. Please collect them."
+    return text
 
 @st.cache_resource
-def init_tts_engine():
-    if pyttsx3 is None:
-        return None
-    engine = pyttsx3.init()
-    return engine
+def load_model(path):
+    return YOLO(path)
 
+model = load_model("best.pt")
 
-def speak_text_local(text: str):
-    engine = init_tts_engine()
-    if engine is None:
-        st.error("pyttsx3 not available. Install pyttsx3 for local TTS (pip install pyttsx3)")
-        return
-    engine.say(text)
-    engine.runAndWait()
+def yolo_on_frame(bgr):
+    h, w, _ = bgr.shape
+    new_w = 480
+    scale = new_w / w
+    new_h = int(h * scale)
+    small = cv2.resize(bgr, (new_w, new_h))
+    results = model.predict(small, conf=0.75, iou=0.45, verbose=False)
+    res = results[0]
+    ann_small = res.plot()
+    annotated = cv2.resize(ann_small, (w, h))
 
-
-def synthesize_gtts_audio(text: str) -> bytes:
-    """Return mp3 audio bytes using gTTS"""
-    if gTTS is None:
-        raise RuntimeError("gTTS not installed. `pip install gTTS` to enable server-side TTS.")
-    tts = gTTS(text=text, lang="en")
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    return fp.read()
-
-
-# Placeholder LLM wrapper. Replace internals with real API calls (Google GenAI, OpenAI, etc.)
-def generate_instruction(detected_class: str) -> str:
-    """Generate a short instruction string given the detected class.
-    This function contains a simple local template fallback if LLM credentials are not provided.
-    Replace the body with an actual LLM call (Google GenAI or other) if desired.
-    """
-    # If user provided Google API key, you would call the Google Gen AI SDK here.
-    # Example (pseudocode):
-    # from google.generativeai import client
-    # client = GoogleClient(api_key=GOOGLE_API_KEY)
-    # resp = client.generate_text(...)
-
-    # Fallback deterministic templates (safe, no external calls)
-    templates = {
-        "Mobile-phone": "Prohibited: 'Mobile' is not allowed. Please remove it from the room immediately.",
-        "backpack": "Prohibited: 'Backpack' is not allowed during the exam. Please remove it from the room.",
-        "Calculator": "Prohibited: 'Calculator' is not allowed. Place it outside the exam area now.",
-        "book": "Prohibited: 'Book' is not allowed during the exam. Please remove it from the desk.",
-        "Notebook": "Prohibited: 'Notebook' is not allowed. Please remove it now.",
-        "paper": "Prohibited: 'Notes/Paper' detected. Please clear the desk.",
-        "smart watches - v1": "Prohibited: 'Smartwatch' is not allowed. Please remove it now.",
-    }
-    return templates.get(detected_class, f"Prohibited: '{detected_class}' is not allowed.")
-
-
-# Utility to parse ultralytics results to a list of detections
-def parse_results(results) -> List[Dict[str, Any]]:
     dets = []
-    # results is a list (per frame) of Results objects
-    for r in results:
-        boxes = r.boxes
-        if boxes is None:
-            continue
-        for box in boxes:
-            cls = int(box.cls.cpu().numpy()[0]) if hasattr(box, "cls") else int(box.cls)
-            conf = float(box.conf.cpu().numpy()[0]) if hasattr(box, "conf") else float(box.conf)
-            xyxy = box.xyxy.cpu().numpy()[0] if hasattr(box, "xyxy") else box.xyxy
-            dets.append({
-                "class_id": cls,
-                "conf": conf,
-                "xyxy": xyxy.tolist() if hasattr(xyxy, "tolist") else list(xyxy),
-            })
-    return dets
+    for box in res.boxes:
+        cid = int(box.cls[0])
+        conf_val = float(box.conf[0])
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        x1 /= scale
+        y1 /= scale
+        x2 /= scale
+        y2 /= scale
+        model_name = model.names[int(cid)] if hasattr(model, "names") else str(cid)
+        friendly_name = CLASS_MAP.get(cid, model_name)
+        dets.append({
+            "Class ID": cid,
+            "Class Name": friendly_name,
+            "Confidence": round(conf_val, 3),
+            "x1": x1, "y1": y1,
+            "x2": x2, "y2": y2
+        })
+    return annotated, dets
 
+# ---------- session state defaults ----------
+if "current" not in st.session_state:
+    st.session_state.current = []
+if "counts" not in st.session_state:
+    st.session_state.counts = {name: 0 for name in CLASS_MAP.values()}
+if "last_instruction_text" not in st.session_state:
+    st.session_state.last_instruction_text = None
+if "last_alert_time" not in st.session_state:
+    st.session_state.last_alert_time = 0.0
+if "ready_for_new_instruction" not in st.session_state:
+    st.session_state.ready_for_new_instruction = True
+if "audio_html" not in st.session_state:
+    st.session_state.audio_html = ""
+if "summary_df" not in st.session_state:
+    st.session_state.summary_df = None
+if "btn_disabled" not in st.session_state:
+    st.session_state.btn_disabled = False
+# streaming flag: True means show/start stream, False stops/hides it
+if "streaming" not in st.session_state:
+    st.session_state.streaming = True
 
-# ----------------------
-# Streamlit UI / App
-# ----------------------
+# ---------- Video processor ----------
+class VideoProcessor(VideoTransformerBase):
+    def __init__(self):
+        self.last = None
+        self.latest = []
+        self.frame_id = 0
 
-st.set_page_config(page_title="Pre-Exam Proctoring", layout="wide")
-st.title("Pre-Exam Proctoring — Live Detection of Prohibited Items")
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        self.frame_id += 1
 
-# Sidebar controls
-with st.sidebar:
-    st.header("Settings")
-    model_path = st.text_input("YOLO model path", MODEL_PATH)
-    conf = st.slider("Confidence threshold", 0.0, 1.0, float(CONF_THRESH), 0.01)
-    tts_mode = st.radio("TTS mode (audio playback)", ["server", "local"], index=0 if TTS_MODE == "server" else 1)
-    start_camera = st.button("Start Camera")
-    stop_camera = st.button("Stop Camera")
-    st.markdown("---")
-    st.caption("LLM integration: set GOOGLE_API_KEY as env var to enable Google Gen AI calls in generate_instruction().")
+        if self.frame_id % 5 == 0 or self.last is None:
+            annotated, dets = yolo_on_frame(img)
+            self.last = annotated
+            self.latest = dets
 
-# Session state for detections
-if "collected" not in st.session_state:
-    st.session_state.collected = []  # list of dicts {class, time, conf}
-if "ignored" not in st.session_state:
-    st.session_state.ignored = []
-if "pending" not in st.session_state:
-    st.session_state.pending = None
-if "camera_running" not in st.session_state:
-    st.session_state.camera_running = False
+        return frame.from_ndarray(self.last, format="bgr24")
 
-# Load model button
-if st.button("Load Model"):
-    st.info(f"Loading model from {model_path} ...")
-    model = load_model(model_path)
-    if model is not None:
-        st.success("Model loaded. Make sure your model has mAP > 0.85 on validation for production.")
-        st.session_state.model = model
+# ensure webrtc_ctx exists in this run (set None if not created)
+webrtc_ctx = None
 
-# Main columns
-col1, col2 = st.columns([2, 1])
+# ---------- Layout ----------
+left, right = st.columns([2, 1])
 
-with col1:
-    st.subheader("Camera Feed")
-    FRAME_WINDOW = st.image([])
-
-with col2:
-    st.subheader("Detections")
-    st.write("Pending detection:")
-    pending_box = st.empty()
-    st.write("Collected items:")
-    collected_box = st.empty()
-
-# Buttons for pending detection actions
-ignore_btn = st.button("Ignore")
-collect_btn = st.button("Collected")
-exam_done_btn = st.button("Examination Completed")
-
-# Start / stop camera logic
-if start_camera:
-    st.session_state.camera_running = True
-if stop_camera:
-    st.session_state.camera_running = False
-
-# OpenCV video capture (webcam)
-cap = None
-if st.session_state.camera_running:
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        st.error("Cannot open webcam. Make sure a webcam is connected and accessible.")
-        st.session_state.camera_running = False
-
-# Main loop (pull frames and run inference)
-if st.session_state.camera_running and hasattr(st.session_state, "model"):
-    model = st.session_state.model
-    try:
-        while st.session_state.camera_running:
-            ret, frame = cap.read()
-            if not ret:
-                st.warning("Failed to read frame from camera")
-                break
-
-            # Resize for speed (maintain aspect ratio) - model will re-scale internally
-            h, w = frame.shape[:2]
-            max_dim = 1280
-            if max(h, w) > max_dim:
-                scale = max_dim / max(h, w)
-                frame = cv2.resize(frame, (int(w * scale), int(h * scale)))
-
-            # Convert BGR->RGB
-            img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            # Run inference
-            results = model.track(source=img, conf=conf, persist=False) if hasattr(model, "track") else model(img, conf=conf)
-
-            # Parse detections
-            detections = []
-            # ultralytics returns a Results object or list; we handle common cases
-            try:
-                for r in results:
-                    if r.boxes is None:
-                        continue
-                    for b in r.boxes:
-                        cls_id = int(b.cls.cpu().numpy()[0]) if hasattr(b, "cls") else int(b.cls)
-                        conf_v = float(b.conf.cpu().numpy()[0]) if hasattr(b, "conf") else float(b.conf)
-                        xyxy = b.xyxy.cpu().numpy()[0] if hasattr(b, "xyxy") else b.xyxy
-                        label = model.names[cls_id] if hasattr(model, "names") else str(cls_id)
-                        detections.append({"class": label, "conf": conf_v, "xyxy": xyxy.tolist()})
-            except Exception:
-                # fallback: try simpler parse
-                try:
-                    for r in results:
-                        for d in r:
-                            detections.append(d)
-                except Exception:
-                    pass
-
-            # Draw boxes on frame for visualization
-            vis = img.copy()
-            for d in detections:
-                x1, y1, x2, y2 = map(int, d["xyxy"][:4])
-                cv2.rectangle(vis, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                cv2.putText(vis, f"{d['class']} {d['conf']:.2f}", (x1, max(y1 - 6, 0)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-
-            FRAME_WINDOW.image(vis)
-
-            # Check for prohibited items
-            found = None
-            for d in detections:
-                if d["class"] in PROHIBITED_CLASSES and d["conf"] >= conf:
-                    found = d
-                    break
-
-            if found is not None:
-                # If new pending or different from previous
-                prev = st.session_state.get("pending")
-                if (prev is None) or (prev and prev.get("class") != found["class"]):
-                    st.session_state.pending = {"class": found["class"], "conf": found["conf"], "time": time.time()}
-                    # Generate instruction via LLM or template
-                    instruction = generate_instruction(found["class"])
-                    st.session_state.pending["instruction"] = instruction
-
-                    # TTS
-                    if tts_mode == "local" and pyttsx3 is not None:
-                        speak_text_local(instruction)
-                    else:
-                        # Generate mp3 and show audio player (note: autoplay may be blocked by browser)
-                        try:
-                            audio_bytes = synthesize_gtts_audio(instruction)
-                            st.audio(audio_bytes, format="audio/mp3")
-                        except Exception as e:
-                            st.warning("TTS failed: " + str(e))
-
-                pending_box.json(st.session_state.pending)
-            else:
-                pending_box.write("No prohibited items detected.")
-                st.session_state.pending = None
-
-            # Handle button presses
-            if ignore_btn and st.session_state.pending:
-                st.session_state.ignored.append(st.session_state.pending)
-                st.session_state.pending = None
-                ignore_btn = False
-
-            if collect_btn and st.session_state.pending:
-                st.session_state.collected.append(st.session_state.pending)
-                st.session_state.pending = None
-                collect_btn = False
-
-            # Show collected items
-            if len(st.session_state.collected) > 0:
-                collected_box.json(st.session_state.collected)
-            else:
-                collected_box.write("No items collected yet.")
-
-            if exam_done_btn:
-                # Show final report
-                st.success("Examination completed. Final collected items returned below.")
-                st.json(st.session_state.collected)
-                # reset
-                st.session_state.camera_running = False
-                break
-
-            # small sleep to yield
-            time.sleep(0.05)
-
-    finally:
-        if cap is not None:
-            cap.release()
-
-else:
-    if not hasattr(st.session_state, "model"):
-        st.info("Load a YOLO model and start the camera to begin live proctoring.")
+with left:
+    st.subheader("📸 Live Stream")
+    if st.session_state.streaming:
+        # create the stream if streaming flag is True
+        webrtc_ctx = webrtc_streamer(
+            key="stream",
+            mode=WebRtcMode.SENDRECV,
+            video_transformer_factory=VideoProcessor,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True,
+        )
     else:
-        st.info("Camera is not running. Click 'Start Camera' in the sidebar.")
+        st.info("Stream stopped. Click 'Start Stream' to resume scanning.")
+        # show a button to restart streaming if you want
+        if st.button("Start Stream"):
+            st.session_state.streaming = True
+            st.rerun()
 
+with right:
+    c1, c2 = st.columns(2)
+    with c1:
+        btn_collect = st.button("Collected", use_container_width=True)
+    with c2:
+        btn_ignore = st.button("Ignore", use_container_width=True)
 
-# Footer: quick tips
-st.markdown("---")
-st.write("**Tips:** Ensure your model is trained with `imgsz` large enough for small objects (e.g., 960 or 1024). For best results, label tightly and include many hard examples.")
+    btn_complete = st.button("Complete Scan", use_container_width=True)
 
+    st.subheader("📊 Current Detections")
+    box_dets = st.empty()
 
-# End of file
+    st.subheader("🧠 LLM Instructions")
+    box_llm = st.empty()
+
+    box_audio = st.empty()
+
+    st.subheader("📈 Summary")
+    box_sum = st.empty()
+
+    msg = st.empty()
+
+    btn_clear = st.button("Clear Summary", disabled=st.session_state.btn_disabled)
+    if btn_clear:
+        st.session_state.summary_df = None
+        st.session_state.btn_disabled = True
+
+# ---------- UPDATE CURRENT DETECTIONS FROM VIDEO ----------
+if webrtc_ctx and webrtc_ctx.video_transformer and hasattr(webrtc_ctx.video_transformer, "latest"):
+    latest = webrtc_ctx.video_transformer.latest
+    if latest is not None and len(latest) > 0:
+        st.session_state.current = latest
+dets = st.session_state.current
+
+# ---------- helper: clear panels ----------
+def clear_panels():
+    box_dets.empty()
+    box_audio.empty()
+    st.session_state.audio_html = ""
+    st.session_state.last_alert_time = 0.0
+    st.session_state.current = []
+    st.session_state.ready_for_new_instruction = True
+
+# ---------- HANDLE BUTTONS ----------
+skip_detection = False
+
+if btn_ignore:
+    clear_panels()
+    skip_detection = True
+    msg.info("Frame Ignored.")
+
+if btn_collect:
+    if not dets:
+        msg.warning("Nothing to collect.")
+    else:
+        for d in dets:
+            if d["Class Name"] in HELPING_SET:
+                st.session_state.counts[d["Class Name"]] += 1
+        clear_panels()
+        skip_detection = True
+        msg.success("Collected.")
+
+if btn_complete:
+    # Build summary from counts and store in session_state
+    df = pd.DataFrame([{"Object": k, "Count": v} for k, v in st.session_state.counts.items()])
+    st.session_state.summary_df = df
+
+    # STOP video stream robustly:
+    # 1) set streaming flag False so future reruns won't re-create the streamer
+    st.session_state.streaming = False
+
+    # 2) attempt to stop the live webrtc context if it exists and is playing
+    try:
+        if webrtc_ctx is not None and getattr(webrtc_ctx, "state", None) is not None:
+            if webrtc_ctx.state.playing:
+                webrtc_ctx.stop()
+    except Exception as e:
+        # don't crash — just log a message to the UI
+        msg.warning(f"Could not call webrtc_ctx.stop(): {e}")
+
+    clear_panels()
+    skip_detection = True
+    msg.success("Scan Completed. Video stopped.")
+
+# ---------- SHOW CURRENT DETECTIONS TABLE ----------
+if not skip_detection:
+    if dets:
+        box_dets.dataframe(pd.DataFrame(dets), use_container_width=True)
+    else:
+        box_dets.info("No objects detected.")
+
+# ---------- AUTO DETECTION MESSAGE + VOICE ----------
+if not skip_detection and dets:
+    helping_dets = [d for d in dets if d["Class Name"] in HELPING_SET]
+    if helping_dets:
+        if st.session_state.ready_for_new_instruction:
+            instruction_text = generate_llm_instructions(helping_dets)
+            if instruction_text:
+                st.session_state.last_instruction_text = instruction_text
+                st.session_state.ready_for_new_instruction = False
+
+        now = time.time()
+        need_new_tts = (now - st.session_state.last_alert_time) >= 5
+
+        if need_new_tts and st.session_state.last_instruction_text:
+            st.session_state.last_alert_time = now
+            try:
+                tts = gTTS(text=st.session_state.last_instruction_text, lang="en")
+                audio_bytes = io.BytesIO()
+                tts.write_to_fp(audio_bytes)
+                audio_bytes.seek(0)
+                audio_data = audio_bytes.read()
+                b64 = base64.b64encode(audio_data).decode()
+                audio_html = f"""
+                <audio autoplay style="display:none;">
+                    <source src="data:audio/mp3;base64,{b64}" type="audio/mpeg">
+                </audio>
+                """
+                st.session_state.audio_html = audio_html
+            except Exception as e:
+                msg.error(f"TTS Error: {e}")
+
+# ---------- RENDER LLM INSTRUCTIONS + AUDIO ----------
+if st.session_state.last_instruction_text:
+    box_llm.markdown(st.session_state.last_instruction_text)
+if st.session_state.audio_html:
+    box_audio.markdown(st.session_state.audio_html, unsafe_allow_html=True)
+
+# ---------- RENDER SUMMARY ----------
+if st.session_state.summary_df is not None:
+    box_sum.table(st.session_state.summary_df)
