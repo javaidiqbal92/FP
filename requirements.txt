@@ -4,3 +4,8 @@ ultralytics
 opencv-python-headless
 av
 numpy
+pandas
+gtts
+streamlit_autorefresh 
+time
+base64
