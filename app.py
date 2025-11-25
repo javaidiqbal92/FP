@@ -122,6 +122,23 @@ webrtc_ctx = None
 
 # ---------- Layout ----------
 left, right = st.columns([2, 1])
+RTC_CONFIGURATION = {
+    "iceServers": [
+        {
+            "urls": ["stun:stun.l.google.com:19302"]
+        },
+        {
+            "urls": [
+                "turn:openrelay.metered.ca:80",
+                "turn:openrelay.metered.ca:443",
+                "turn:openrelay.metered.ca:443?transport=tcp"
+            ],
+            "username": "openrelayproject",
+            "credential": "openrelayproject"
+        }
+    ],
+    "iceTransportPolicy": "all",
+}
 
 with left:
     st.subheader("📸 Live Stream")
@@ -129,6 +146,7 @@ with left:
         # create the stream if streaming flag is True
         webrtc_ctx = webrtc_streamer(
             key="stream",
+            rtc_configuration=RTC_CONFIGURATION,
             mode=WebRtcMode.SENDRECV,
             video_transformer_factory=VideoProcessor,
             media_stream_constraints={"video": True, "audio": False},
@@ -272,4 +290,5 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
