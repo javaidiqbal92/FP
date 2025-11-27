@@ -14,7 +14,7 @@ CLASS_MAP = {0: "Bag", 1: "book", 2: "mobile", 3: "Smart Watch", 4: "paper", 5: 
 HELPING_SET = set(CLASS_MAP.values())
 
 @st.cache_resource
-def load_model(path="best.pt"):
+def load_model("best.pt"):
     return YOLO(path)
 
 model = load_model()
@@ -87,3 +87,4 @@ with right:
         st.dataframe(pd.DataFrame(st.session_state.current))
     else:
         st.info("No objects detected yet.")
+
