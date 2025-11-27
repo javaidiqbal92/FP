@@ -1,4 +1,3 @@
- 
 import streamlit as st
 from ultralytics import YOLO
 import cv2
@@ -24,7 +23,6 @@ CLASS_MAP = {
     6: "Calculator",
 
 }
-# CLASS_MAP = {0:"mobile",}
 HELPING_SET = set(CLASS_MAP.values())
 
 def generate_llm_instructions(dets):
@@ -55,7 +53,7 @@ def yolo_on_frame(bgr):
     scale = new_w / w
     new_h = int(h * scale)
     small = cv2.resize(bgr, (new_w, new_h))
-    results = model.predict(small, conf=0.80, iou=0.55, verbose=False)
+    results = model.predict(small, conf=0.75, iou=0.45, verbose=False)
     res = results[0]
     ann_small = res.plot()
     annotated = cv2.resize(ann_small, (w, h))
@@ -138,7 +136,8 @@ RTC_CONFIGURATION = {
             "username": "openrelayproject",
             "credential": "openrelayproject"
         }
-    ]
+    ],
+    "iceTransportPolicy": "all",
 }
 
 with left:
@@ -291,3 +290,6 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
+
+
