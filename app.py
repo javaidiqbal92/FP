@@ -145,7 +145,7 @@ with left:
     st.subheader("📸 Live Stream")
     if st.session_state.streaming:
         # create the stream if streaming flag is True
-        webrtc_ctx = ywebrtc_streamer(
+        webrtc_ctx = webrtc_streamer(
             key="stream",
             mode=WebRtcMode.SENDRECV,
             video_transformer_factory=VideoProcessor,
