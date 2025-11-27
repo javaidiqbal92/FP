@@ -13,11 +13,11 @@ st.title("📝Cheating Material Detection Model")
 CLASS_MAP = {0: "Bag", 1: "book", 2: "mobile", 3: "Smart Watch", 4: "paper", 5: "Notebook", 6: "Calculator"}
 HELPING_SET = set(CLASS_MAP.values())
 
-@st.cache_resource
-def load_model("best.pt"):
+st.cache_resource.clear()
+def load_model(path):
     return YOLO(path)
 
-model = load_model()
+model = load_model("best.pt)
 
 def yolo_on_frame(bgr):
     h, w, _ = bgr.shape
@@ -87,6 +87,7 @@ with right:
         st.dataframe(pd.DataFrame(st.session_state.current))
     else:
         st.info("No objects detected yet.")
+
 
 
 
