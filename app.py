@@ -2,7 +2,7 @@ import streamlit as st
 from ultralytics import YOLO
 import cv2
 import pandas as pd
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 from gtts import gTTS
 import io
 from streamlit_autorefresh import st_autorefresh
@@ -290,6 +290,7 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
 
