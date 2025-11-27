@@ -1,8 +1,9 @@
+ 
 import streamlit as st
 from ultralytics import YOLO
 import cv2
 import pandas as pd
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 from gtts import gTTS
 import io
 from streamlit_autorefresh import st_autorefresh
@@ -23,6 +24,7 @@ CLASS_MAP = {
     6: "Calculator",
 
 }
+# CLASS_MAP = {0:"mobile",}
 HELPING_SET = set(CLASS_MAP.values())
 
 def generate_llm_instructions(dets):
@@ -53,7 +55,7 @@ def yolo_on_frame(bgr):
     scale = new_w / w
     new_h = int(h * scale)
     small = cv2.resize(bgr, (new_w, new_h))
-    results = model.predict(small, conf=0.75, iou=0.45, verbose=False)
+    results = model.predict(small, conf=0.80, iou=0.55, verbose=False)
     res = results[0]
     ann_small = res.plot()
     annotated = cv2.resize(ann_small, (w, h))
@@ -100,7 +102,7 @@ if "streaming" not in st.session_state:
     st.session_state.streaming = True
 
 # ---------- Video processor ----------
-class VideoProcessor(VideoProcessorBase):
+class VideoProcessor(VideoTransformerBase):
     def __init__(self):
         self.last = None
         self.latest = []
@@ -136,18 +138,17 @@ RTC_CONFIGURATION = {
             "username": "openrelayproject",
             "credential": "openrelayproject"
         }
-    ],
-    "iceTransportPolicy": "all",
+    ]
 }
 
 with left:
     st.subheader("📸 Live Stream")
     if st.session_state.streaming:
         # create the stream if streaming flag is True
-        webrtc_ctx = webrtc_streamer(
+        webrtc_ctx = ywebrtc_streamer(
             key="stream",
             mode=WebRtcMode.SENDRECV,
-            video_processor_factory=VideoProcessor,
+            video_transformer_factory=VideoProcessor,
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True,
             rtc_configuration=RTC_CONFIGURATION
@@ -290,9 +291,3 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
-
-
-
-
-
-
