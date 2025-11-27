@@ -100,7 +100,7 @@ if "streaming" not in st.session_state:
     st.session_state.streaming = True
 
 # ---------- Video processor ----------
-class VideoProcessor(VideoTransformerBase):
+class VideoProcessor(VideoProcessorBase):
     def __init__(self):
         self.last = None
         self.latest = []
@@ -290,6 +290,7 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
 
