@@ -17,7 +17,7 @@ st.cache_resource.clear()
 def load_model(path):
     return YOLO(path)
 
-model = load_model("best.pt)
+model = load_model("best.pt")
 
 def yolo_on_frame(bgr):
     h, w, _ = bgr.shape
@@ -87,6 +87,7 @@ with right:
         st.dataframe(pd.DataFrame(st.session_state.current))
     else:
         st.info("No objects detected yet.")
+
 
 
 
