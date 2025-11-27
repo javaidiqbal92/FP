@@ -147,7 +147,7 @@ with left:
         webrtc_ctx = webrtc_streamer(
             key="stream",
             mode=WebRtcMode.SENDRECV,
-            video_transformer_factory=VideoProcessor,
+            video_processor_factory=VideoProcessor,
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True,
             rtc_configuration=RTC_CONFIGURATION
@@ -290,6 +290,7 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
 
