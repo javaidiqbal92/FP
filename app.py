@@ -126,17 +126,11 @@ webrtc_ctx = None
 left, right = st.columns([2, 1])
 RTC_CONFIGURATION = {
     "iceServers": [
+        {"urls": ["stun:stun.l.google.com:19302"]},      # STUN
         {
-            "urls": ["stun:stun.l.google.com:19302"]
-        },
-        {
-            "urls": [
-                "turn:openrelay.metered.ca:80",
-                "turn:openrelay.metered.ca:443",
-                "turn:openrelay.metered.ca:443?transport=tcp"
-            ],
-            "username": "openrelayproject",
-            "credential": "openrelayproject"
+            "urls": ["turn:global.relay.metered.ca:80"], # TURN
+            "username": "openai",
+            "credential": "openai",
         }
     ]
 }
@@ -291,3 +285,4 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
