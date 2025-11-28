@@ -124,25 +124,21 @@ webrtc_ctx = None
 
 # ---------- Layout ----------
 left, right = st.columns([2, 1])
-webrtc_ctx = webrtc_streamer(
-    key="stream",
-    mode=WebRtcMode.SENDRECV,
-    video_processor_factory=VideoProcessor,
-    media_stream_constraints={"video": True, "audio": False},
-    rtc_configuration={
-        "iceServers": [
-            # STUN server (Google)
-            {"urls": ["stun:stun.l.google.com:19302"]},
 
-            # Free TURN server
-            {
-                "urls": ["turn:openrelay.metered.ca:80"],
-                "username": "openrelayproject",
-                "credential": "openrelayproject"
-            }
-        ]
-    }
-)
+RTC_CONFIGURATION={
+   "iceServers": [
+       # STUN server (Google)
+       {"urls": ["stun:stun.l.google.com:19302"]},
+
+       # Free TURN server
+       {
+           "urls": ["turn:openrelay.metered.ca:80"],
+           "username": "openrelayproject",
+           "credential": "openrelayproject"
+       }
+   ]
+}
+
 
 
 with left:
@@ -302,5 +298,6 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
