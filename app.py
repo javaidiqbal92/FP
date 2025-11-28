@@ -144,13 +144,15 @@ RTC_CONFIGURATION = {
 with left:
     st.subheader("📸 Live Stream")
     if st.session_state.streaming:
-        # create the stream if streaming flag is True
+        # create the stream if streaming flag is True.
+        # NOTE: async_processing=False -> recv() runs in the main thread context
+        # which avoids background thread losing Streamlit session context.
         webrtc_ctx = webrtc_streamer(
             key="stream",
             mode=WebRtcMode.SENDRECV,
-            video_transformer_factory=VideoProcessor,
+            video_processor_factory=VideoProcessor,      # updated name
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=True,
+            async_processing=False,                       # run recv in main thread
             rtc_configuration=RTC_CONFIGURATION
         )
     else:
@@ -158,7 +160,8 @@ with left:
         # show a button to restart streaming if you want
         if st.button("Start Stream"):
             st.session_state.streaming = True
-            st.rerun()
+            # safe rerun to recreate the streamer
+            st.rerun()    
 
 with right:
     c1, c2 = st.columns(2)
@@ -188,12 +191,12 @@ with right:
         st.session_state.btn_disabled = True
 
 # ---------- UPDATE CURRENT DETECTIONS FROM VIDEO ----------
-if webrtc_ctx and webrtc_ctx.video_transformer and hasattr(webrtc_ctx.video_transformer, "latest"):
-    latest = webrtc_ctx.video_transformer.latest
+if webrtc_ctx is not None and getattr(webrtc_ctx, "video_processor", None) is not None:
+    # streamlit-webrtc's attribute name when using video_processor_factory is video_processor
+    latest = webrtc_ctx.video_processor.latest
     if latest is not None and len(latest) > 0:
         st.session_state.current = latest
 dets = st.session_state.current
-
 # ---------- helper: clear panels ----------
 def clear_panels():
     box_dets.empty()
@@ -228,22 +231,26 @@ if btn_complete:
     st.session_state.summary_df = df
 
     # STOP video stream robustly:
-    # 1) set streaming flag False so future reruns won't re-create the streamer
     st.session_state.streaming = False
 
-    # 2) attempt to stop the live webrtc context if it exists and is playing
     try:
-        if webrtc_ctx is not None and getattr(webrtc_ctx, "state", None) is not None:
-            if webrtc_ctx.state.playing:
+        if webrtc_ctx is not None:
+            # check both play state and stop method safely
+            state = getattr(webrtc_ctx, "state", None)
+            if state is not None and getattr(state, "playing", False):
                 webrtc_ctx.stop()
+            else:
+                # try stopping even if not flagged playing (some versions need explicit stop)
+                try:
+                    webrtc_ctx.stop()
+                except Exception:
+                    pass
     except Exception as e:
-        # don't crash — just log a message to the UI
         msg.warning(f"Could not call webrtc_ctx.stop(): {e}")
 
     clear_panels()
     skip_detection = True
     msg.success("Scan Completed. Video stopped.")
-
 # ---------- SHOW CURRENT DETECTIONS TABLE ----------
 if not skip_detection:
     if dets:
