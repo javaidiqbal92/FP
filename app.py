@@ -17,7 +17,7 @@ st_autorefresh(interval=5000, key="yolo-refresh")
 CLASS_MAP = {
     0: "Bag",
     1: "book",
-    2: "mobile",
+    2: "mobile-phone",
     3: "Smart Watch",
     4: "paper",
     5: "Notebook",
@@ -298,3 +298,4 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
