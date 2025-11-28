@@ -3,12 +3,13 @@ import streamlit as st
 from ultralytics import YOLO
 import cv2
 import pandas as pd
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+from streamlit_webrtc import webrtc_streamer,VideoProcessorBase, VideoTransformerBase, WebRtcMode
 from gtts import gTTS
 import io
 from streamlit_autorefresh import st_autorefresh
 import time
 import base64
+import av
 
 st.set_page_config(page_title="Exam Proctoring", layout="wide")
 st.title("📝Cheating Material Detection Model")
@@ -108,9 +109,10 @@ class VideoProcessor(VideoTransformerBase):
         self.latest = []
         self.frame_id = 0
 
-    def recv(self, frame):
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
-        self.frame_id += 1
+        # Do any processing here (e.g., YOLO detection)
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
         if self.frame_id % 5 == 0 or self.last is None:
             annotated, dets = yolo_on_frame(img)
@@ -135,25 +137,12 @@ with left:
         # NOTE: async_processing=False -> recv() runs in the main thread context
         # which avoids background thread losing Streamlit session context.
         webrtc_ctx = webrtc_streamer(
-            key="stream",
-            mode=WebRtcMode.SENDRECV,
-            video_processor_factory=VideoProcessor,      # updated name
-            media_stream_constraints={"video": True, "audio": False},
-            async_processing=False,                       # run recv in main thread
-            rtc_configuration={
-        "iceServers": [
-            # STUN server (Google)
-            {"urls": ["stun:stun.l.google.com:19302"]},
-
-            # Free TURN server
-            {
-                "urls": ["turn:openrelay.metered.ca:80"],
-                "username": "openrelayproject",
-                "credential": "openrelayproject"
-            }
-        ]
-    }
-        )
+                                  key="stream",
+                                  mode=WebRtcMode.SENDRECV,
+                                  video_processor_factory=VideoProcessor,  # ✅ use this instead
+                                  media_stream_constraints={"video": True, "audio": False},
+                                  async_processing=True  # ✅ new argument instead of async_transform
+                               )
     else:
         st.info("Stream stopped. Click 'Start Stream' to resume scanning.")
         # show a button to restart streaming if you want
@@ -297,6 +286,7 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
 
