@@ -56,7 +56,7 @@ def yolo_on_frame(bgr):
     scale = new_w / w
     new_h = int(h * scale)
     small = cv2.resize(bgr, (new_w, new_h))
-    results = model.predict(small, conf=0.80, iou=0.55, verbose=False)
+    results = model.predict(small, conf=0.70, iou=0.55, verbose=False)
     res = results[0]
     ann_small = res.plot()
     annotated = cv2.resize(ann_small, (w, h))
@@ -286,6 +286,7 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
 
