@@ -3,13 +3,12 @@ import streamlit as st
 from ultralytics import YOLO
 import cv2
 import pandas as pd
-from streamlit_webrtc import webrtc_streamer,VideoProcessorBase, VideoTransformerBase, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 from gtts import gTTS
 import io
 from streamlit_autorefresh import st_autorefresh
 import time
 import base64
-import av
 
 st.set_page_config(page_title="Exam Proctoring", layout="wide")
 st.title("📝Cheating Material Detection Model")
@@ -18,7 +17,7 @@ st_autorefresh(interval=5000, key="yolo-refresh")
 CLASS_MAP = {
     0: "Bag",
     1: "book",
-    2: "mobile-phone",
+    2: "mobile",
     3: "Smart Watch",
     4: "paper",
     5: "Notebook",
@@ -56,7 +55,7 @@ def yolo_on_frame(bgr):
     scale = new_w / w
     new_h = int(h * scale)
     small = cv2.resize(bgr, (new_w, new_h))
-    results = model.predict(small, conf=0.55, iou=0.45, verbose=False)
+    results = model.predict(small, conf=0.80, iou=0.55, verbose=False)
     res = results[0]
     ann_small = res.plot()
     annotated = cv2.resize(ann_small, (w, h))
@@ -109,10 +108,9 @@ class VideoProcessor(VideoTransformerBase):
         self.latest = []
         self.frame_id = 0
 
-    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+    def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        # Do any processing here (e.g., YOLO detection)
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
+        self.frame_id += 1
 
         if self.frame_id % 5 == 0 or self.last is None:
             annotated, dets = yolo_on_frame(img)
@@ -126,9 +124,22 @@ webrtc_ctx = None
 
 # ---------- Layout ----------
 left, right = st.columns([2, 1])
-
-
-
+RTC_CONFIGURATION = {
+    "iceServers": [
+        {
+            "urls": ["stun:stun.l.google.com:19302"]
+        },
+        {
+            "urls": [
+                "turn:openrelay.metered.ca:80",
+                "turn:openrelay.metered.ca:443",
+                "turn:openrelay.metered.ca:443?transport=tcp"
+            ],
+            "username": "openrelayproject",
+            "credential": "openrelayproject"
+        }
+    ]
+}
 
 with left:
     st.subheader("📸 Live Stream")
@@ -137,12 +148,13 @@ with left:
         # NOTE: async_processing=False -> recv() runs in the main thread context
         # which avoids background thread losing Streamlit session context.
         webrtc_ctx = webrtc_streamer(
-                                  key="stream",
-                                  mode=WebRtcMode.SENDRECV,
-                                  video_processor_factory=VideoProcessor,  # ✅ use this instead
-                                  media_stream_constraints={"video": True, "audio": False},
-                                  async_processing=True  # ✅ new argument instead of async_transform
-                               )
+            key="stream",
+            mode=WebRtcMode.SENDRECV,
+            video_processor_factory=VideoProcessor,      # updated name
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=False,                       # run recv in main thread
+            rtc_configuration=RTC_CONFIGURATION
+        )
     else:
         st.info("Stream stopped. Click 'Start Stream' to resume scanning.")
         # show a button to restart streaming if you want
@@ -286,10 +298,3 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
-
-
-
-
-
-
-
