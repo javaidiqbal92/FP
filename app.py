@@ -48,7 +48,7 @@ def generate_llm_instructions(dets):
 def load_model(path):
     return YOLO(path)
 
-model = load_model("best1212.pt")
+model = load_model("best.pt")
 
 def yolo_on_frame(bgr):
     h, w, _ = bgr.shape
@@ -301,6 +301,7 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
 
