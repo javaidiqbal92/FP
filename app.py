@@ -154,7 +154,7 @@ with left:
                                   mode=WebRtcMode.SENDRECV,
                                   video_processor_factory=VideoProcessor,  # ✅ use this instead
                                   media_stream_constraints={"video": True, "audio": False},
-                                  async_processing=False  # ✅ new argument instead of async_transform
+                                  async_processing=False,  # ✅ new argument instead of async_transform
                                   rtc_configuration=RTC_CONFIGURATION
                                   
                                )
@@ -301,6 +301,7 @@ if st.session_state.audio_html:
 # ---------- RENDER SUMMARY ----------
 if st.session_state.summary_df is not None:
     box_sum.table(st.session_state.summary_df)
+
 
 
 
